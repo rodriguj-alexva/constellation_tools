@@ -26,7 +26,8 @@ int outputTle(
 	double RAAN,
 	double eccentricity, // 0 to 1
 	double argumentOfPerigee, // degrees
-	double meanAnomaly
+	double meanAnomaly,
+	double epoch
 	)
 {
 	// convert semi major axis length to Mean Motion
@@ -40,7 +41,7 @@ int outputTle(
     node.setDesignator(satelliteNumber);    // International designator
     
     node.setClassification('U');     // classification
-    node.setPreciseEpoch(time(NULL));// epoch
+    node.setPreciseEpoch(epoch);
     
     node.setInclination(inclination);
     node.setRightAscensionAscendingNode(RAAN);
@@ -56,7 +57,7 @@ int outputTle(
     node.setRevolutionNumber(0);	// Revolution number at epoch
     
     // Output
-    printf("%s [%s-%s]\n", node.satelliteName().c_str(), node.satelliteNumber().c_str(), node.designator().c_str());
+    printf("%s \n", node.satelliteName().c_str());
 //    std::cout << node.satelliteName()
 //              << " [" << node.satelliteNumber()
 //              << " - " << node.designator() << "]" << std::endl;
@@ -64,6 +65,8 @@ int outputTle(
 
     return 0;
 }
+
+bool useEpochForPlaneSpacing = false;
 
 char *baseName = (char *) "relay";
 char *baseDesignator = (char *) "990";
@@ -78,34 +81,62 @@ void printUsage();
 int main(int argc, char** argv)
 {
 	char buf[40];
+	if (parseArgs(argc,argv) < 0) {
+		return -1;
+	}
+	if (numberPlanes < 1) {
+		fprintf(stderr,"number of planes too few \n");
+		return -1;
+	}
+	if (numberSatellites < 1) {
+		fprintf(stderr,"number of satellites too few \n");
+		return -1;
+	}
 	
 	double semiMajorAxis = (RADIUS_EARTH + altitude);
 	double RAAN = 0.0;
 	double eccentricity = 0.0;
 	double argumentOfPerigee = 0.0; // degrees
-	double orbitalPeriod = 2 * M_PI * sqrt( semiMajorAxis * 1000 / GM);
+	double orbitalPeriod = 2 * M_PI * sqrt( pow(semiMajorAxis * 1000,3) / GM);
 	double timeOfPeriapsis = 1.0;
-	double meanAnomaly = 360 * (timeOfPeriapsis/orbitalPeriod); // degrees
-	
+	double meanAnomaly = 180 * (timeOfPeriapsis/orbitalPeriod); // degrees
 	double timeOfPeriapsisUnit = orbitalPeriod / numberSatellites;
 	
-	if (parseArgs(argc,argv) < 0) {
-		return -1;
-	}
+	double baseEpoch = time(NULL);
+		
+	fprintf(stderr,"semiMajorAxis %f \n", semiMajorAxis);
+	fprintf(stderr,"orbitalPeriod %f (secs) %f (mins)\n", orbitalPeriod, orbitalPeriod/60.0);
 	
 	
 	for (int i=0; i<numberPlanes; i++)
 	{
-		RAAN = (180 / numberPlanes) * i;
+		double RAANOffset = (180 / numberPlanes) * i;
 		
 		for (int j=0; j<numberSatellites; j++)
 		{
 			timeOfPeriapsis = j * timeOfPeriapsisUnit;
 			// even planes, timeOfPeriapsis gets incremented by half unit
-			if (i % 2 == 1) { 
-				timeOfPeriapsis += (timeOfPeriapsisUnit / 2);
-			}
+			// disabled for now
+//			if (i % 2 == 1) { 
+//				timeOfPeriapsis += (timeOfPeriapsisUnit / 2);
+//			}
 			meanAnomaly = 360 * (timeOfPeriapsis/orbitalPeriod); // degrees
+			
+//			RAAN = (45 / numberSatellites) * j * -1;
+			double RAANFactor;
+//			RAANFactor = 25.5; // for alt 750 km
+//			RAANFactor = 28.4; // for alt 1500 km
+			RAANFactor = ((29.0 * altitude) / 7500.0) + (113.0/5.0);
+			double epoch = baseEpoch;
+			
+			if (!useEpochForPlaneSpacing) {
+				RAAN = RAANOffset + 360 - ((RAANFactor / numberSatellites) * j);
+			} else {
+				RAAN = RAANOffset;
+				epoch += ((orbitalPeriod / numberSatellites) * j);
+				timeOfPeriapsis = 0;
+				meanAnomaly = 0;
+			}
 			
 			std::ostringstream ss;
 			int indexPlane = i + 1;
@@ -116,14 +147,14 @@ int main(int argc, char** argv)
 			
 			ss.str(""); ss.clear();
 			
-			int satNum = (numberPlanes * i) + j;
+			int satNum = (numberSatellites * i) + j;
 			sprintf(buf, "%s%02d", baseDesignator, satNum);		
 			std::string designator = buf;
 			
 			outputTle( 
 				name.c_str(), designator.c_str(), semiMajorAxis, 
 				inclination, RAAN, eccentricity,
-				argumentOfPerigee, meanAnomaly);
+				argumentOfPerigee, meanAnomaly, epoch);
 		}
 	}
 
@@ -142,7 +173,10 @@ int parseArgs(int argc, char ** argv)
 	numberSatellites = atoi(argv[3]);
 	for (int i=4; i<argc; i++)
 	{
-		if (!strcmp(argv[i],"--inclination"))
+		if (!strcmp(argv[i],"-e")) {
+			useEpochForPlaneSpacing = true;
+		}
+		else if (!strcmp(argv[i],"--inclination"))
 		{
 			++i;
 			if (i < argc) {
@@ -153,7 +187,9 @@ int parseArgs(int argc, char ** argv)
 		{
 			++i;
 			if (i < argc) {
-				altitude = atoi(argv[i]);
+				altitude = atof(argv[i]);
+				
+				fprintf(stderr,"altitude %f \n", altitude);
 			}
 		}
 		else if (!strcmp(argv[i],"--basedesignator"))
@@ -167,6 +203,7 @@ int parseArgs(int argc, char ** argv)
 }
 void printUsage()
 {
-	printf("Usage: genConstellation baseName numberPlanes numberSatellites [--inclination value_degrees] [--altitude value_km] [--basedesignator str_3chars]\n");
+	printf("Usage: genConstellation baseName numberPlanes numberSatellites [-e] [--inclination value_degrees] [--altitude value_km] [--basedesignator str_3chars]\n");
+	printf("\t-e : use the Epoch value to space satellites in each plane (experimental) \n");
 }
 
