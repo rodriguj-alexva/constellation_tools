@@ -69,7 +69,8 @@ int outputTle(
 bool useEpochForPlaneSpacing = false;
 
 char *baseName = (char *) "relay";
-char *baseDesignator = (char *) "990";
+char *baseNumber = (char *) "99";
+double baseEpoch;
 int numberPlanes = 2;
 int numberSatellites = 4;
 double altitude = 750; // km
@@ -81,6 +82,8 @@ void printUsage();
 int main(int argc, char** argv)
 {
 	char buf[40];
+	baseEpoch = time(NULL);
+	
 	if (parseArgs(argc,argv) < 0) {
 		return -1;
 	}
@@ -102,8 +105,7 @@ int main(int argc, char** argv)
 	double meanAnomaly = 180 * (timeOfPeriapsis/orbitalPeriod); // degrees
 	double timeOfPeriapsisUnit = orbitalPeriod / numberSatellites;
 	
-	double baseEpoch = time(NULL);
-		
+	fprintf(stderr,"epoch %f \n", baseEpoch);
 	fprintf(stderr,"semiMajorAxis %f \n", semiMajorAxis);
 	fprintf(stderr,"orbitalPeriod %f (secs) %f (mins)\n", orbitalPeriod, orbitalPeriod/60.0);
 	
@@ -148,7 +150,7 @@ int main(int argc, char** argv)
 			ss.str(""); ss.clear();
 			
 			int satNum = (numberSatellites * i) + j;
-			sprintf(buf, "%s%02d", baseDesignator, satNum);		
+			sprintf(buf, "%s%03d", baseNumber, satNum);		
 			std::string designator = buf;
 			
 			outputTle( 
@@ -169,9 +171,10 @@ int parseArgs(int argc, char ** argv)
 	}
 
 	baseName = argv[1];
-	numberPlanes = atoi(argv[2]);
-	numberSatellites = atoi(argv[3]);
-	for (int i=4; i<argc; i++)
+	baseNumber = argv[2];
+	numberPlanes = atoi(argv[3]);
+	numberSatellites = atoi(argv[4]);
+	for (int i=5; i<argc; i++)
 	{
 		if (!strcmp(argv[i],"-e")) {
 			useEpochForPlaneSpacing = true;
@@ -181,6 +184,8 @@ int parseArgs(int argc, char ** argv)
 			++i;
 			if (i < argc) {
 				inclination = atoi(argv[i]);
+			} else {
+				fprintf(stderr,"--inclination missing argument \n");
 			}
 		}
 		else if (!strcmp(argv[i],"--altitude"))
@@ -190,20 +195,28 @@ int parseArgs(int argc, char ** argv)
 				altitude = atof(argv[i]);
 				
 				fprintf(stderr,"altitude %f \n", altitude);
+			} else {
+				fprintf(stderr,"--altitude missing argument \n");
 			}
 		}
-		else if (!strcmp(argv[i],"--basedesignator"))
+		else if (!strcmp(argv[i],"--epoch"))
 		{
 			++i;
 			if (i < argc) {
-				baseDesignator = argv[i];
+				baseEpoch = atof(argv[i]);
+			} else {
+				fprintf(stderr,"--epoch missing argument \n");
 			}
+		}
+		else
+		{
+			fprintf(stderr,"unknown parameter %s \n", argv[i]);
 		}
 	}
 }
 void printUsage()
 {
-	printf("Usage: genConstellation baseName numberPlanes numberSatellites [-e] [--inclination value_degrees] [--altitude value_km] [--basedesignator str_3chars]\n");
-	printf("\t-e : use the Epoch value to space satellites in each plane (experimental) \n");
+	printf("Usage: genConstellation baseName baseNumber numberPlanes numberSatellites [--inclination value_degrees] [--altitude value_km] [--epoch secondsSinceUnixEpoch]\n");
+//	printf("\t-e : use the Epoch value to space satellites in each plane (experimental) \n");
 }
 
