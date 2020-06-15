@@ -17,4 +17,6 @@ target_link_libraries(test_quicktle libquicktle.so)
 add_Executable(genConstellation src/genConstellation.cpp)
 target_link_libraries(genConstellation libquicktle.so)
 
+add_Executable(genTle src/genTle.cpp)
+target_link_libraries(genTle libquicktle.so)
 
